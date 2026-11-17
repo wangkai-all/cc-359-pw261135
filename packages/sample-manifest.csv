@@ -1,0 +1,6 @@
+sample_id,plot,depth_cm,ph,note
+S-001,A1,15,6.4,baseline
+S-002,A1,30,6.5,seam at 26cm
+S-003,A2,15,6.2,control
+S-004,A2,30,6.6,control
+S-005,B1,15,6.1,coarse fragment

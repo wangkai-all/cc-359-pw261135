@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refract — custody ledger</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body class="viz-root">
+<div class="shell">
+
+  <header class="masthead">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9z" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M12 7.2 16.6 9.8v4.4L12 16.8 7.4 14.2V9.8z" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".55"/>
+        <circle cx="12" cy="12" r="1.8" fill="currentColor"/>
+      </svg>
+      <div>
+        <h1>Refract</h1>
+        <p class="brand-sub">Local custody ledger · synthetic packages only</p>
+      </div>
+    </div>
+    <div class="server-chips" id="server-chips" aria-live="polite">
+      <span class="chip"><span class="chip-key">epoch</span> <span id="epoch">—</span></span>
+      <span class="chip"><span class="chip-key">lease TTL</span> <span id="ttl">—</span></span>
+      <button class="chip chip-action" id="btn-restart" type="button" title="Simulate a process restart against the same data directory">Restart server</button>
+    </div>
+  </header>
+
+  <section class="kpi-row" aria-label="Ledger summary">
+    <article class="stat-tile">
+      <p class="stat-label">Physical blobs</p>
+      <p class="stat-value" id="kpi-blobs">0</p>
+      <p class="stat-sub" id="kpi-blobs-sub">shared bytes on disk</p>
+    </article>
+    <article class="stat-tile">
+      <p class="stat-label">Bytes on disk</p>
+      <p class="stat-value" id="kpi-bytes">0 B</p>
+      <p class="stat-sub" id="kpi-bytes-sub">content-addressed</p>
+    </article>
+    <article class="stat-tile">
+      <p class="stat-label">Valid references</p>
+      <p class="stat-value" id="kpi-refs">0</p>
+      <p class="stat-sub" id="kpi-refs-sub">source-scoped</p>
+    </article>
+    <article class="stat-tile">
+      <p class="stat-label">Blocked cleanups</p>
+      <p class="stat-value" id="kpi-blocked">0</p>
+      <p class="stat-sub" id="kpi-blocked-sub">references or readers</p>
+    </article>
+    <article class="stat-tile">
+      <p class="stat-label">Cleanup-ready</p>
+      <p class="stat-value" id="kpi-ready">0</p>
+      <p class="stat-sub" id="kpi-ready-sub">nothing holding bytes</p>
+    </article>
+  </section>
+
+  <section class="panel upload-panel" id="upload-panel" aria-label="Receive a package">
+    <div class="panel-head">
+      <h2>Receive a package</h2>
+      <p>Upload reads with <code>fetch</code>, hashes locally, then posts to the ledger. Identical bytes reuse the existing physical blob; provenance stays per source.</p>
+    </div>
+    <form id="upload-form" class="upload-form" autocomplete="off">
+      <label class="field">
+        <span class="field-label">Source</span>
+        <select name="source" id="source-select" required></select>
+      </label>
+      <label class="field">
+        <span class="field-label">Receipt no.</span>
+        <input name="receipt" id="receipt-input" required placeholder="r-2026-001" size="16">
+      </label>
+      <label class="field">
+        <span class="field-label">Retention (s)</span>
+        <input name="retain" id="retain-input" type="number" min="1" value="300" required size="7">
+      </label>
+      <label class="field">
+        <span class="field-label">Recall after (s)</span>
+        <input name="recall_after" id="recall-input" type="number" min="1" placeholder="optional" size="8">
+      </label>
+      <label class="field field-file">
+        <span class="field-label">File</span>
+        <input name="file" id="file-input" type="file" required>
+      </label>
+      <button class="btn btn-primary" type="submit" id="upload-btn">Receive</button>
+    </form>
+    <div class="fixture-row">
+      <span class="fixture-label">Local fixtures</span>
+      <div id="fixture-buttons" class="fixture-buttons"></div>
+    </div>
+    <p class="panel-status" id="upload-status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="panel demo-panel" aria-label="Guided demo">
+    <div class="panel-head">
+      <h2>Guided demo</h2>
+      <p>One run through the hard cases: identical bytes from two sources, a recall that must not affect the other source, and a server restart underneath an in-flight download. Every step calls the same API the buttons above use.</p>
+    </div>
+    <div class="demo-controls">
+      <label class="field">
+        <span class="field-label">Fixture</span>
+        <select id="demo-fixture"></select>
+      </label>
+      <button class="btn btn-ghost" id="btn-demo" type="button">Run guided demo</button>
+      <span class="demo-runstate" id="demo-runstate"></span>
+    </div>
+    <ol class="demo-steps" id="demo-steps">
+      <li data-step="duplicate"><span class="step-no">1</span><div><strong>Duplicate delivery</strong><p>Same fixture → Atlas Registry and Harbor Exchange. Expect one physical blob, two deliveries, two receipts.</p><p class="step-result"></p></div></li>
+      <li data-step="recall"><span class="step-no">2</span><div><strong>Recall one source</strong><p>Recall Harbor only. Its downloads stop; Atlas keeps serving the same bytes; cleanup stays blocked by Atlas.</p><p class="step-result"></p></div></li>
+      <li data-step="restart"><span class="step-no">3</span><div><strong>Restart during download</strong><p>Open a slow Atlas download, restart the server mid-stream. The lease is abandoned, cleanup may proceed once references end, and the reader fails closed.</p><p class="step-result"></p></div></li>
+      <li data-step="release"><span class="step-no">4</span><div><strong>Cleanup gate</strong><p>End Atlas retention, purge when nothing holds the bytes, then receive the same fixture again: the blob is resurrected with a fresh delivery.</p><p class="step-result"></p></div></li>
+    </ol>
+  </section>
+
+  <div class="filter-row" role="group" aria-label="Filter packages">
+    <button class="seg" data-filter="all" aria-pressed="true">All</button>
+    <button class="seg" data-filter="blocked" aria-pressed="false">Blocked</button>
+    <button class="seg" data-filter="ready" aria-pressed="false">Cleanup-ready</button>
+    <button class="seg" data-filter="purged" aria-pressed="false">Purged</button>
+    <span class="filter-spacer"></span>
+    <label class="toggle"><input type="checkbox" id="toggle-auto"> auto-refresh</label>
+    <button class="btn btn-ghost" id="btn-advance" type="button" title="Move the ledger clock forward without waiting">Advance clock 1h</button>
+    <button class="btn btn-ghost" id="btn-cleanup" type="button">Run cleanup</button>
+  </div>
+
+  <main class="grid">
+    <section class="panel packages-panel" aria-label="Packages">
+      <div class="panel-head">
+        <h2>Files and provenance</h2>
+        <p id="packages-count">No packages yet.</p>
+      </div>
+      <div id="packages" class="packages"></div>
+      <div class="empty" id="packages-empty">
+        <p>Nothing received yet. Upload a file above, or seed a local fixture into two different sources to watch duplicate bytes share one blob.</p>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Sources</h2>
+          <p>Each source stamps its own receipts and retention.</p>
+        </div>
+        <ul class="source-list" id="sources"></ul>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Activity</h2>
+          <p>Append-only ledger events.</p>
+        </div>
+        <ol class="event-list" id="events"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="foot">
+    <p>Bytes are shared; eligibility never is. Recall fences that source's leases only; cleanup waits for every valid reference and live reader.</p>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<template id="package-template">
+  <article class="package">
+    <header class="package-head">
+      <div class="package-id">
+        <div class="package-title-row">
+          <h3 class="package-title"></h3>
+          <span class="badge disposition"></span>
+        </div>
+        <p class="package-meta"><code class="digest"></code> · <span class="size"></span> · <span class="blob-state"></span></p>
+      </div>
+      <div class="package-actions">
+        <button class="btn btn-ghost act-download" type="button">Download</button>
+        <button class="btn btn-ghost act-cleanup" type="button" title="Attempt physical cleanup for this package">Cleanup</button>
+      </div>
+    </header>
+
+    <div class="package-grid">
+      <section class="deliveries-block">
+        <h4>Deliveries <span class="h4-note">one per source · provenance never merged</span></h4>
+        <ul class="delivery-list"></ul>
+      </section>
+      <section class="cleanup-block">
+        <h4>Cleanup gate</h4>
+        <p class="cleanup-reason"></p>
+        <ul class="blocker-list"></ul>
+        <div class="lease-block">
+          <h5>Downloads</h5>
+          <ul class="lease-list"></ul>
+        </div>
+      </section>
+    </div>
+  </article>
+</template>
+
+<template id="delivery-template">
+  <li class="delivery">
+    <div class="delivery-top">
+      <span class="source-pill"><span class="source-dot"></span><span class="source-name"></span></span>
+      <span class="badge delivery-status"></span>
+    </div>
+    <p class="delivery-line"></p>
+    <p class="delivery-sub"></p>
+    <div class="delivery-actions">
+      <button class="btn btn-mini act-download-source" type="button">Download via this source</button>
+      <button class="btn btn-mini act-recall" type="button">Recall</button>
+      <button class="btn btn-mini act-end-retention" type="button">End retention</button>
+    </div>
+  </li>
+</template>
+
+<script src="/app.js"></script>
+</body>
+</html>

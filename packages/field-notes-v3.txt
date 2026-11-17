@@ -1,0 +1,8 @@
+SYNTHETIC FIELD NOTES 3 (fictional)
+station: kestrel-9
+observer: R. Vale
+notes:
+  06:10  mast calibration nominal
+  06:40  passive sweep complete, 12 candidate signals
+  07:15  re-tasked array to candidate 4
+  07:55  candidate 4 resolved as weather artefact
